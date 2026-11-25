@@ -10,6 +10,7 @@
 #include "../../src/tosc.h"
 #include "../../src/tosc_inflate.h"
 #include "../../src/dmx.h"
+#include "../../src/tuya_proto.h"
 
 // zlib-Variante von inflateFile (auf dem Panel: ROM-tinfl)
 bool tosc::inflateFile(const uint8_t *data, size_t len, std::string &out, std::string *err) {
@@ -211,6 +212,69 @@ int main(int argc, char **argv) {
     }
     assert(out.universeCount() == dmx::MAX_UNIVERSES);
     printf("  Art-Net-Pakete ok (%zu gesendet)\n", pk.size());
+  }
+
+  // Tuya 3.3: Referenzrahmen aus tinytuya (Testschlüssel, kein echter)
+  {
+    printf("\nTuya:\n");
+    auto unhex = [](const char *h) {
+      std::string o;
+      for (size_t i = 0; h[i] && h[i + 1]; i += 2) o += (char)strtol(std::string(h + i, 2).c_str(), nullptr, 16);
+      return o;
+    };
+    const std::string key = "0123456789abcdef";
+    std::string ref = unhex("000055aa000000010000000700000057332e3300000000000000000000000023d681a3c46b76acf440f1db5dc5f25902f3dbe19d7df7e4ac8c3127efb3e5680b412c9018addb9ff24796ee281e7d993eb19a3995b94738fb0e954b21b2f493c36216200000aa55");
+    std::string mine = tuya::pack(key, 1, tuya::CONTROL, "{\"devId\":\"abc\",\"uid\":\"abc\",\"t\":\"0\",\"dps\":{\"20\":true}}");
+    assert(mine == ref);
+    printf("  Befehl identisch mit tinytuya (%zu Bytes)\n", mine.size());
+
+    // Status-Push der Lampe, in zwei Teilen empfangen, davor Datenmüll
+    std::string push = unhex("000055aa00000005000000080000006b00000000332e330000000000000000000000006c43740537c46421392c83bfa222a5ee37a4c39b6c36de63a5ebc7d2371490b960896d9e6b6b01019713453b59436be0f7db4538bf88c22a086a01f3db10a0a56fb4f0dcaf4bc3ad6c939e2e7b0008e609a339e50000aa55");
+    std::string buf = "xyz" + push.substr(0, 30);
+    tuya::Frame fr;
+    std::string err;
+    assert(tuya::takeFrame(buf, key, fr, err) && !err.empty());  // Müll übersprungen
+    assert(!tuya::takeFrame(buf, key, fr, err));                  // unvollständig
+    buf += push.substr(30);
+    assert(tuya::takeFrame(buf, key, fr, err) && err.empty() && fr.cmd == 8 && buf.empty());
+    printf("  Status-Push: %s\n", fr.json.c_str());
+    tuya::State st;
+    assert(tuya::fromStatus(fr.json, st) && st.colour && std::fabs(st.hue - 240 / 360.0f) < 1e-3 &&
+           std::fabs(st.sat - 1.0f) < 1e-3 && std::fabs(st.bright - 490 / 990.0f) < 1e-3);
+    std::string bad = push;
+    bad[40] ^= 1;
+    assert(tuya::takeFrame(bad, key, fr, err) && err == "Prüfsumme falsch");
+    std::string wrongKey = push;
+    assert(tuya::takeFrame(wrongKey, "fedcba9876543210", fr, err) && !err.empty());
+
+    std::string disc = unhex("000055aa00000000000000130000007c000000002d7bf8cc62406f87c121257cd6b07fe0750ab77d2f38f3641813f002807679f840b700b6d381437f26944c8dac707835d3477df4fda0ed99c7f6daf0fcbd2eaa5dd6a5e013f4cfc48fec86a883adaa453dd110e8f40c4aa56a01bb72433a953414670e7cfaa071beeb6ed114db7e9a0ee031f5ae0000aa55");
+    std::string dj, ip, id;
+    assert(tuya::decodeDiscovery((const uint8_t *)disc.data(), disc.size(), dj));
+    assert(tuya::jsonValue(dj, "ip", ip) && ip == "10.10.1.77" && tuya::jsonValue(dj, "gwId", id) && id == "abc");
+    printf("  Erkennung: ip=%s gwId=%s\n", ip.c_str(), id.c_str());
+
+    // OSC -> Zustand -> Datenpunkte
+    std::vector<int> lamps;
+    std::string param;
+    assert(!tuya::parsePath("/dmx/1", 2, lamps, param, err));
+    assert(tuya::parsePath("/tuya/2/bright", 2, lamps, param, err) && lamps == std::vector<int>{1} && param == "bright");
+    assert(tuya::parsePath("/tuya/all/on", 2, lamps, param, err) && lamps.size() == 2);
+    assert(tuya::parsePath("/tuya/3/on", 2, lamps, param, err) && lamps.empty() && !err.empty());
+    printf("  /tuya/3/on -> %s\n", err.c_str());
+    tuya::State s;
+    assert(tuya::apply(s, "bright", {"/x", {osc::Arg::Float(0.5f)}}, err));
+    assert(tuya::controlData(s) == "\"28\":\"000000000000001f90000\"");
+    assert(tuya::persistDps(s) == "\"22\":505,\"23\":0");
+    assert(tuya::apply(s, "color", {"/x", {osc::Arg::Float(0.5f), osc::Arg::Float(1.0f)}}, err) && s.colour);
+    assert(tuya::controlData(s) == "\"28\":\"000b403e801f900000000\"");
+    assert(tuya::persistDps(s) == "\"24\":\"00b403e801f9\"" && tuya::modeDps(s) == "\"21\":\"colour\"");
+    assert(tuya::apply(s, "temp", {"/x", {osc::Arg::Float(1.0f)}}, err) && !s.colour);
+    assert(!tuya::apply(s, "blink", {"/x", {osc::Arg::Float(1.0f)}}, err));
+    assert(!tuya::apply(s, "on", {"/x", {}}, err));
+    assert(tuya::apply(s, "on", {"/x", {osc::Arg::Bool(false)}}, err) && !s.on && tuya::switchDps(s) == "\"20\":false");
+    auto fb = tuya::feedback(1, s);
+    assert(fb.size() == 6 && fb[5].path == "/tuya/1/color" && fb[5].args.size() == 2);
+    printf("  Datenpunkte ok: %s / %s\n", tuya::controlData(s).c_str(), tuya::persistDps(s).c_str());
   }
 
   printf("\nAlles in Ordnung.\n");

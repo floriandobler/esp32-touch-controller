@@ -7,6 +7,7 @@
 #include "layouts.h"
 #include "net_osc.h"
 #include "artnet.h"
+#include "lamps.h"
 #include "web_page.h"
 
 namespace web {
@@ -96,6 +97,15 @@ void handleStatus() {
   j += ",\"dmxUni\":" + String(s.dmxUniverse);
   j += ",\"dmxTarget\":" + jsonStr(artnet::target());
   j += ",\"dmxSent\":" + String(artnet::sentCount());
+  j += ",\"lamps\":[";
+  bool firstLamp = true;
+  for (auto &l : lamps::list()) {
+    if (!firstLamp) j += ',';
+    firstLamp = false;
+    j += "{\"name\":" + jsonStr(l.name) + ",\"ip\":" + jsonStr(l.ip) + ",\"id\":" + jsonStr(l.idTail) +
+         ",\"online\":" + (l.online ? "true" : "false") + "}";
+  }
+  j += "]";
   j += ",\"layout\":" + jsonStr(app::activeLayout());
   j += ",\"controls\":" + String((unsigned)app::controlCount());
   j += ",\"layouts\":[";
@@ -269,6 +279,14 @@ void handleLog() {
   sendJson(200, j);
 }
 
+// Lampen: Liste aus devices.json (im Browser umgewandelt in Zeilen "ID<TAB>Schlüssel<TAB>IP<TAB>Name")
+void handleLamps() {
+  String err;
+  if (!lamps::configure(server.arg("cfg"), err)) return sendErr(400, err);
+  web::log('!', "Lampen gespeichert: " + String((unsigned)lamps::list().size()));
+  sendOk();
+}
+
 void handleRestart() {
   sendOk();
   app::restart();
@@ -295,6 +313,7 @@ void begin() {
   server.on("/api/layouts/download", HTTP_GET, handleDownload);
   server.on("/api/log", HTTP_GET, handleLog);
   server.on("/api/restart", HTTP_POST, handleRestart);
+  server.on("/api/lamps", HTTP_POST, handleLamps);
   server.onNotFound([]() {
     // Einrichtungs-WLAN: alle Seiten auf die Startseite umleiten
     if (net_osc::apActive()) {

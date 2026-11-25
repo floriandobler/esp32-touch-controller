@@ -24,6 +24,7 @@ pio run -t upload
 - **OSC:** Ziel-Adresse, Ziel-Port und Empfangs-Port – gelten sofort.
 - **WLAN:** Netzwerk wechseln. Passwortfeld leer lassen = Passwort bleibt.
 - **DMX (Art-Net):** Art-Net-Ausgang an/aus, Ziel-IP (leer = Broadcast ins eigene Netz), Universe.
+- **Lampen (Tuya / Smart Life):** `devices.json` laden, Verbindungsstatus je Lampe.
 - **Monitor:** Live-Anzeige aller gesendeten (→) und empfangenen (←) OSC-Nachrichten.
 
 Einstellungen und das angezeigte Layout bleiben nach einem Neustart erhalten.
@@ -62,6 +63,38 @@ Im TouchOSC-Editor also einfach als OSC-Adresse `/dmx/<kanal>` eintragen.
   um die Kanäle. Für das Panel ein eigenes Universe verwenden.
 - Über WLAN ist die feste IP des Art-Net-Knotens zuverlässiger als Broadcast.
 
+## Smart-Life-Lampen (Tuya)
+
+Günstige WLAN-Lampen aus der App **Smart Life** / **Tuya Smart** steuert das Panel direkt im
+lokalen Netz (Protokoll 3.3, ohne Cloud). OSC-Nachrichten an `/tuya/…` gehen an die Lampen statt
+als OSC raus:
+
+| OSC-Nachricht (Werte 0–1) | Wirkung |
+|---|---|
+| `/tuya/1/on` | ein/aus (> 0.5 = ein) |
+| `/tuya/1/bright` | Helligkeit (Weiß und Farbe) |
+| `/tuya/1/temp` | Weißton warm → kalt, schaltet auf Weiß |
+| `/tuya/1/hue`, `/tuya/1/sat` | Farbton, Sättigung, schalten auf Farbe |
+| `/tuya/1/color` mit zwei Werten | Farbton und Sättigung (z. B. XY-Pad) |
+
+`1` ist die Nummer der Lampe in der Weboberfläche, `all` steuert alle. Die Regler im Layout
+folgen dem Zustand der Lampen, auch wenn er in der App geändert wird.
+
+**Einrichten (einmalig):** Jede Lampe hat einen eigenen Schlüssel, den es nur über die Tuya-Cloud gibt.
+
+1. Auf iot.tuya.com ein kostenloses Konto anlegen, ein Cloud-Projekt („Smart Home“, Rechenzentrum
+   passend zum App-Konto, z. B. Central Europe) erstellen, den Dienst **IoT Core** (Trial)
+   aktivieren und unter *Devices → Link App Account* die Smart-Life-App per QR-Code verknüpfen.
+2. Im Projektordner (der Ordner `tuya/` wird nicht committet):
+   ```bash
+   cd tuya && python3 -m venv .venv && .venv/bin/pip install tinytuya
+   .venv/bin/python -m tinytuya wizard
+   ```
+3. Die entstandene `tuya/devices.json` in der Weboberfläche unter **Lampen** laden.
+
+Die Schlüssel bleiben gültig, bis eine Lampe neu angelernt wird. Neue IP-Adressen findet das Panel
+selbst (über die Erkennungs-Broadcasts der Lampen).
+
 ## Ports
 
 | | Standard | Einstellung |
@@ -69,6 +102,7 @@ Im TouchOSC-Editor also einfach als OSC-Adresse `/dmx/<kanal>` eintragen.
 | Panel sendet an | Ziel:7000 | Resolume: *OSC Input Port* |
 | Panel empfängt auf | 7001 | Resolume: *OSC Output Port* |
 | Art-Net (DMX) | 6454 | fest |
+| Tuya-Lampen | TCP 6668, Erkennung UDP 6667 | fest |
 
 ## Was vom TouchOSC-Layout unterstützt wird
 
@@ -99,13 +133,15 @@ Im TouchOSC-Editor also einfach als OSC-Adresse `/dmx/<kanal>` eintragen.
 | `src/net_osc.*` | WLAN, Einrichtungs-WLAN, mDNS und OSC über UDP |
 | `src/dmx.*` | `/dmx/…`-Pfade auswerten, Art-Net-Pakete bauen (am Rechner testbar) |
 | `src/artnet.*` | Art-Net senden (Ziel, Universe, Takt) |
+| `src/tuya_proto.*` | Tuya-Protokoll 3.3 und Lampenlogik (am Rechner testbar) |
+| `src/lamps.*` | Verbindungen zu den Lampen (eigener Task), Lampenliste |
 | `src/osc.*` | OSC-Kodierung (Nachrichten, Bundles) |
 | `src/xml_mini.*` | Kleiner XML-Parser |
 | `src/tosc_inflate*` | Entpacken der `.tosc`-Datei (zlib, ROM-Funktion des ESP32) |
 | `src/touch_gt911.h` | Kleiner GT911-Treiber (I2C: SDA 19, SCL 45) |
 | `tools/host_test/` | Testprogramm für den Rechner, nutzt denselben Code wie das Panel |
 
-Layout am Rechner prüfen, ohne zu flashen:
+Layout am Rechner prüfen, ohne zu flashen (braucht `brew install mbedtls`):
 
 ```bash
 ./tools/host_test/run.sh "data/layouts/ESP32 Panel Test 02.tosc"

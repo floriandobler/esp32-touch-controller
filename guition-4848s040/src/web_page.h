@@ -112,6 +112,18 @@ footer{margin-top:18px;display:flex;justify-content:space-between;align-items:ce
     </form>
   </section>
 
+  <section>
+    <h2>Lampen (Tuya / Smart Life)</h2>
+    <ul class="layouts" id="lamps"></ul>
+    <div class="actions">
+      <button type="button" id="lampPick">devices.json laden …</button>
+      <input type="file" id="lampFile" accept=".json,application/json" hidden>
+      <button class="small danger" id="lampClear" type="button">Alle entfernen</button>
+      <span class="msg" id="lampMsg"></span>
+    </div>
+    <p class="hint">Die Datei aus dem tinytuya-Assistenten enthält ID, Schlüssel und IP jeder Lampe. Der Schlüssel bleibt im Panel und wird nicht wieder angezeigt. Steuerung per OSC: <b>/tuya/&lt;Nr&gt;/on</b>, <b>bright</b>, <b>temp</b>, <b>hue</b>, <b>sat</b>, <b>color</b> (Werte 0–1, Nr ab 1 oder <b>all</b>).</p>
+  </section>
+
   <section class="wide">
     <h2>Monitor</h2>
     <div class="log" id="log"></div>
@@ -187,6 +199,12 @@ function render() {
     formsFilled = true;
   }
 
+  $('lamps').innerHTML = st.lamps.length ? st.lamps.map((l, i) =>
+    '<li><span class="badge">' + (i + 1) + '</span><span class="lname">' + esc(l.name) + '</span>' +
+    '<span class="lsize">' + esc(l.ip || 'IP unbekannt') + '</span>' +
+    '<span class="dot ' + (l.online ? 'ok' : 'bad') + '" title="' + (l.online ? 'verbunden' : 'nicht verbunden') + '"></span></li>'
+  ).join('') : '<li class="empty">Keine Lampen eingerichtet.</li>';
+
   const up = st.uptime, h = Math.floor(up / 3600), m = Math.floor(up % 3600 / 60);
   $('sys').innerHTML =
     '<dt>Layout</dt><dd>' + (st.layout ? esc(st.layout) + ' · ' + st.controls + ' Elemente' : '–') + '</dd>' +
@@ -250,6 +268,28 @@ $('dmxForm').onsubmit = async e => {
     msg($('dmxMsg'), 'Gespeichert.', 'ok'); formsFilled = false; refresh();
   } catch (err) { msg($('dmxMsg'), err.message, 'bad'); }
 };
+
+async function saveLamps(cfg, text) {
+  try {
+    await api('/api/lamps', {method: 'POST', body: new URLSearchParams({cfg})});
+    msg($('lampMsg'), text, 'ok'); refresh();
+  } catch (err) { msg($('lampMsg'), err.message, 'bad'); }
+}
+$('lampFile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  let list;
+  try { list = JSON.parse(await f.text()); } catch (err) { msg($('lampMsg'), 'Keine gültige JSON-Datei', 'bad'); return; }
+  if (!Array.isArray(list)) { msg($('lampMsg'), 'Erwartet die devices.json aus dem tinytuya-Assistenten', 'bad'); return; }
+  const ok = list.filter(d => d.id && d.key && String(d.version || '3.3') === '3.3');
+  const skipped = list.length - ok.length;
+  if (!ok.length) { msg($('lampMsg'), 'Keine Lampe mit Protokoll 3.3 gefunden', 'bad'); return; }
+  const clean = s => String(s || '').replace(/[\t\r\n]/g, ' ').trim();
+  const cfg = ok.map(d => [clean(d.id), clean(d.key), clean(d.ip), clean(d.name)].join('\t')).join('\n');
+  saveLamps(cfg, ok.length + ' Lampe(n) übernommen' + (skipped ? ', ' + skipped + ' übersprungen (anderes Protokoll)' : '') + '.');
+};
+$('lampPick').onclick = () => $('lampFile').click();
+$('lampClear').onclick = () => { if (confirm('Alle Lampen entfernen?')) saveLamps('', 'Entfernt.'); };
 
 $('wifiForm').onsubmit = async e => {
   e.preventDefault();

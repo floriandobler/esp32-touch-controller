@@ -9,6 +9,7 @@
 #include "ui_tosc.h"
 #include "net_osc.h"
 #include "artnet.h"
+#include "lamps.h"
 #include "settings.h"
 #include "layouts.h"
 #include "web.h"
@@ -112,7 +113,7 @@ static void show_message(const char *title, const String &detail) {
 
 static void osc_out(const osc::Message &m) {
   String dmxText;
-  if (artnet::handle(m, dmxText)) {  // /dmx/... geht als Art-Net raus, nicht als OSC
+  if (artnet::handle(m, dmxText) || lamps::handle(m, dmxText)) {  // /dmx und /tuya gehen nicht als OSC raus
     if (OSC_LOG) Serial.printf("%s\n", dmxText.c_str());
     web::log('>', dmxText);
     return;
@@ -149,6 +150,7 @@ bool activateLayout(const String &name, String &err) {
   engine->onSend = osc_out;
   engine->onRemoteChange = [](tosc::Control &c) { ui_tosc::refresh(c); };
   ui_tosc::build(*engine, SCREEN_W, SCREEN_H);
+  lamps::resendState();  // Lampen-Regler gleich auf den aktuellen Stand setzen
   activeName = name;
   if (cfg.layout != name) {
     cfg.layout = name;
@@ -218,6 +220,7 @@ void setup() {
   cfg = settings::load();
   artnet::apply(cfg);
   load_initial_layout();
+  lamps::begin();  // nach dem Dateisystem (liest /tuya.cfg)
 
   net_osc::begin(cfg, [](const char *msg, bool sticky) {
     ui_tosc::status(msg, sticky ? 0 : 8000);
@@ -233,12 +236,14 @@ void loop() {
     bool hit = engine && engine->handleIncoming(m);
     String s = osc::toString(m).c_str();
     String dmxText;
-    if (artnet::handle(m, dmxText)) s += "  → " + dmxText;  // Brücke: OSC von außen → Art-Net
+    if (artnet::handle(m, dmxText) || lamps::handle(m, dmxText)) s += "  → " + dmxText;  // Brücke: OSC von außen
     else if (!hit) s += "  (kein Element)";
     if (OSC_LOG) Serial.printf("OSC <- %s\n", s.c_str());
     web::log('<', s);
   });
   artnet::loop();
+  lamps::loop([](const osc::Message &m) { if (engine) engine->handleIncoming(m); },  // Lampenzustand ins Layout
+              [](const String &s) { web::log('!', s); });
   web::loop();
   lv_timer_handler();
 

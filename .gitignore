@@ -2,3 +2,10 @@
 *.zip
 # Original liegt in ~/Documents/TouchOSC, Kopie in guition-4848s040/data/layouts/
 /*.tosc
+
+# Tuya: Geräteschlüssel und Cloud-Zugang (tinytuya wizard) – nie committen
+/tuya/
+devices.json
+tinytuya.json
+tuya-raw.json
+snapshot.json

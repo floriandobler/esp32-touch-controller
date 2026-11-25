@@ -44,6 +44,10 @@ Radar-Winkel ab 3 Uhr gegen den Uhrzeigersinn; INDEX-Partial wird skaliert wie W
 DMX über Art-Net (fertig, getestet): OSC an `/dmx/<kanal>` bzw. `/dmx/<universe>/<kanal>` wird in
 `osc_out` abgefangen und als ArtDmx gesendet (Float 0–1 → 0–255, Integer direkt; auch eingehendes
 OSC). `src/dmx.*` plattformunabhängig, `src/artnet.*` sendet; Einstellungen dmxon/dmxhost/dmxuni.
+Tuya-Lampen (fertig, getestet): OSC an `/tuya/<n|all>/on|bright|temp|hue|sat|color` → zwei
+RGBCW-Lampen (Smart Life, Protokoll 3.3) auf 10.10.1.104/.137; Seite 2 „Lampen“ im Layout
+`ESP32 Panel Studio.tosc` (Projektordner, alte Fassung „… (vorher).tosc“). `src/tuya_proto.*`
+plattformunabhängig (mbedtls), `src/lamps.*` eigener FreeRTOS-Task mit lwIP-Sockets.
 Zurückgestellt: MIDI. Nicht gewünscht: Lua.
 
 ## Struktur (Projekt in `guition-4848s040/`)
@@ -82,3 +86,10 @@ Zurückgestellt: MIDI. Nicht gewünscht: Lua.
 - Schriften `src/fonts/font_latin1_*.c`: Montserrat-Medium, ASCII + Latin-1 (0xA0–0xFF) + • + €, keine
   LVGL-Symbole (LV_SYMBOL_*) und keine Pfeile. Neu erzeugen mit `lv_font_conv` (Befehl im Dateikopf,
   danach Include auf `#include <lvgl.h>` ändern).
+- Tuya-Schlüssel: `tuya/devices.json` (+ `tinytuya.json` mit Cloud-Secret) – gitignored, nie ausgeben
+  oder committen. Panel speichert die Lampen in LittleFS `/tuya.cfg`.
+- Tuya-Befunde: DP 28 (control_data, Live) wird nur mit leerem cmd 7 bestätigt (kein Status-Push);
+  DP 22/23 setzen schaltet die Lampe auf Weiß; Modus (DP 21) zusammen mit Werten in einem Befehl
+  wird ignoriert → einzeln senden; Feld `t` darf "0" sein. Lampen schaffen 25 Befehle/s.
+- `AsyncUDP::listen()` vor dem WLAN-Start stürzt ab (lwIP noch nicht initialisiert).
+- Der USB-Port heißt manchmal `/dev/cu.usbserial-110` statt `-10` (PlatformIO findet ihn selbst).
