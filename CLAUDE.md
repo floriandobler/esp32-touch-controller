@@ -62,7 +62,8 @@ Zurückgestellt: MIDI. Nicht gewünscht: Lua.
 - `src/net_osc.*`: WLAN (Sleep aus), Einrichtungs-WLAN, UDP, mDNS `osc-panel.local` (+ `_osc._udp`)
 - `include/config.h` (Standardwerte), `include/secrets.h` (WLAN, Ziel-IP; nicht weitergeben)
 - `src/touch_gt911.h`: Eigener minimaler GT911-Treiber
-- `include/lv_conf.h`: LVGL-Konfiguration (Schriften Montserrat 14/20/28/48)
+- `include/lv_conf.h`: LVGL-Konfiguration; Schriften `font_latin1_14/20/28/48` aus `src/fonts/`
+  (eingebaute Montserrat abgeschaltet)
 
 ## Hinweise
 - LVGL 9.6: öffentliche Header liegen unter `lvgl/include/lvgl/…`, nicht `lvgl/src/…`.
@@ -78,3 +79,6 @@ Zurückgestellt: MIDI. Nicht gewünscht: Lua.
   Arena belegt Port 6454: Unicast-Art-Net an den Mac kommt nur bei Arena an; zum Mitschneiden
   Broadcast auf einem unbenutzten Universe (z. B. 32000) und Socket mit SO_REUSEPORT.
 - Multitouch: `src/touch_gt911.h` liest nur den ersten Punkt (GT911 kann bis zu 5).
+- Schriften `src/fonts/font_latin1_*.c`: Montserrat-Medium, ASCII + Latin-1 (0xA0–0xFF) + • + €, keine
+  LVGL-Symbole (LV_SYMBOL_*) und keine Pfeile. Neu erzeugen mit `lv_font_conv` (Befehl im Dateikopf,
+  danach Include auf `#include <lvgl.h>` ändern).

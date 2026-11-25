@@ -131,10 +131,10 @@ Circle circleIn(const lv_area_t &a) {
 
 const lv_font_t *fontFor(int size) {
   int s = (int)std::lround(size * g_scale);
-  if (s <= 16) return &lv_font_montserrat_14;
-  if (s <= 24) return &lv_font_montserrat_20;
-  if (s <= 36) return &lv_font_montserrat_28;
-  return &lv_font_montserrat_48;
+  if (s <= 16) return &font_latin1_14;
+  if (s <= 24) return &font_latin1_20;
+  if (s <= 36) return &font_latin1_28;
+  return &font_latin1_48;
 }
 
 // Text im Bereich; valign: 1 = oben, 2 = Mitte, 3 = unten. wrap = Zeilenumbruch erlaubt.
@@ -498,7 +498,7 @@ void drawControl(lv_event_t *e) {
       d.border_width = 1;
       d.border_opa = LV_OPA_COVER;
       lv_draw_rect(layer, &d, &a);
-      text(layer, a, c->typeName.c_str(), &lv_font_montserrat_14, lv_color_hex(0x8890A0),
+      text(layer, a, c->typeName.c_str(), &font_latin1_14, lv_color_hex(0x8890A0),
            LV_OPA_COVER, LV_TEXT_ALIGN_CENTER);
       break;
     }
@@ -763,7 +763,7 @@ void status(const char *msg, uint32_t ms) {
     lv_obj_set_style_bg_color(g_status, lv_color_hex(0x202830), 0);
     lv_obj_set_style_bg_opa(g_status, LV_OPA_90, 0);
     lv_obj_set_style_text_color(g_status, lv_color_hex(0xE0E6EC), 0);
-    lv_obj_set_style_text_font(g_status, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(g_status, &font_latin1_14, 0);
     lv_obj_set_style_pad_hor(g_status, 10, 0);
     lv_obj_set_style_pad_ver(g_status, 6, 0);
     lv_obj_set_style_radius(g_status, 6, 0);

@@ -11,12 +11,14 @@
 
 #define LV_DEF_REFR_PERIOD 16   // ~60 fps Ziel
 
-// Schriften
-#define LV_FONT_MONTSERRAT_14 1
-#define LV_FONT_MONTSERRAT_20 1
-#define LV_FONT_MONTSERRAT_28 1
-#define LV_FONT_MONTSERRAT_48 1
-#define LV_FONT_DEFAULT &lv_font_montserrat_20
+// Schriften: eigene Montserrat-Medium mit Latin-1 (Umlaute, ß) in src/fonts/ statt der
+// eingebauten (nur ASCII). Erzeugt mit lv_font_conv, Befehl im Kopf der .c-Dateien.
+#define LV_FONT_MONTSERRAT_14 0
+#define LV_FONT_CUSTOM_DECLARE                                                          \
+  LV_FONT_DECLARE(font_latin1_14) LV_FONT_DECLARE(font_latin1_20)                     \
+  LV_FONT_DECLARE(font_latin1_28) LV_FONT_DECLARE(font_latin1_48)
+#define LV_USE_CUSTOM_FONT_DEFAULT 1
+#define LV_FONT_DEFAULT &font_latin1_20
 
 #define LV_USE_LOG 0
 
