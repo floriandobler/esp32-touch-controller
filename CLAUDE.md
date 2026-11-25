@@ -14,6 +14,9 @@
 - Upload nur mit `upload_speed = 115200` stabil (921600 bricht ab: "Unable to verify flash chip connection").
 - OSC-Player Stufe 1: Layout, Touch, WLAN und OSC in beide Richtungen getestet (84/84 Nachrichten
   Mac → Panel, Fader folgt). Panel bekommt per DHCP z. B. 10.10.1.101, Mac ist 10.10.1.120.
+- Bild springt bei WLAN-Last horizontal (PSRAM-Bandbreite) → Bounce-Buffer 480×10 px im
+  `Arduino_ESP32RGBPanel`-Konstruktor behebt es (getestet mit 100 OSC/s + Webabrufen).
+  `CONFIG_LCD_RGB_RESTART_IN_VSYNC` ist im Framework an, daher nur kurzes Springen statt Dauerversatz.
 - Tests vom Mac ins lokale Netz brauchen die macOS-Freigabe „Lokales Netzwerk“ für die Claude-App
   (sonst „No route to host“, obwohl das Gerät in `arp -an` auftaucht).
 

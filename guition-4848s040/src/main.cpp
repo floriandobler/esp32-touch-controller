@@ -37,7 +37,10 @@ Arduino_ESP32RGBPanel *rgbpanel = new Arduino_ESP32RGBPanel(
     1 /* hsync_polarity */, 10 /* hsync_front_porch */, 8 /* hsync_pulse_width */, 50 /* hsync_back_porch */,
     1 /* vsync_polarity */, 10 /* vsync_front_porch */, 8 /* vsync_pulse_width */, 20 /* vsync_back_porch */,
     0 /* pclk_active_neg */, 12000000 /* prefer_speed */, false /* useBigEndian */,
-    0 /* de_idle_high */, 0 /* pclk_idle_high */, 0 /* bounce_buffer_size_px */);
+    0 /* de_idle_high */, 0 /* pclk_idle_high */,
+    // Bounce-Buffer: Bilddaten laufen über 2 × 10 Zeilen im internen RAM statt direkt aus dem PSRAM.
+    // Ohne ihn verliert das Display bei WLAN-Last Pixel und springt horizontal.
+    480 * 10 /* bounce_buffer_size_px */);
 
 // Rotation 0 = Touch-Koordinaten passen ohne Umrechnung
 Arduino_RGB_Display *gfx = new Arduino_RGB_Display(
