@@ -1,5 +1,6 @@
 #include "tosc.h"
 #include "xml_mini.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -60,13 +61,12 @@ bool isNumber(const std::string &s) {
   return end && *end == 0;
 }
 
+const char *const TYPE_NAMES[] = {"GROUP", "BUTTON", "FADER", "LABEL", "TEXT",  "BOX",   "XY",
+                                  "RADIAL", "ENCODER", "RADAR", "RADIO", "GRID", "PAGER"};
+
 Type typeFromName(const std::string &t) {
-  if (t == "GROUP") return Type::GROUP;
-  if (t == "BUTTON") return Type::BUTTON;
-  if (t == "FADER") return Type::FADER;
-  if (t == "LABEL") return Type::LABEL;
-  if (t == "TEXT") return Type::TEXT;
-  if (t == "BOX") return Type::BOX;
+  for (size_t i = 0; i < sizeof TYPE_NAMES / sizeof TYPE_NAMES[0]; i++)
+    if (t == TYPE_NAMES[i]) return (Type)i;
   return Type::OTHER;
 }
 
@@ -101,6 +101,11 @@ std::string fmtNum(float v) {
 }
 
 }  // namespace
+
+const char *typeName(Type t) {
+  size_t i = (size_t)t;
+  return i < sizeof TYPE_NAMES / sizeof TYPE_NAMES[0] ? TYPE_NAMES[i] : "OTHER";
+}
 
 std::unique_ptr<Control> Engine::parseNode(const xml::Node &n, Control *parent, int index) {
   auto c = std::make_unique<Control>();
@@ -257,13 +262,23 @@ bool Engine::partialArg(const Control &c, const Partial &p, osc::Arg &out) const
       num = isStr ? (str == "true" ? 1.0f : 0.0f) : toF(str);
       break;
     case Partial::INDEX:
-      num = (float)c.index;
+      // Skalierung wie bei Werten: mit 1..2 beginnt die Zählung bei 1
+      num = p.scaleMin + (float)c.index * (p.scaleMax - p.scaleMin);
       break;
-    case Partial::PROPERTY:
-      str = p.value == "name" ? c.name : c.prop(p.value.c_str());
+    case Partial::PROPERTY: {
+      // "parent.name", "parent.parent.name" … gehen im Baum nach oben
+      const Control *src = &c;
+      std::string key = p.value;
+      while (key.compare(0, 7, "parent.") == 0) {
+        if (!src->parent) return false;
+        src = src->parent;
+        key.erase(0, 7);
+      }
+      str = key == "name" ? src->name : src->prop(key.c_str());
       isStr = !isNumber(str);
       num = isStr ? 0.0f : toF(str);
       break;
+    }
     case Partial::VALUE: {
       const Value *v = c.value(p.value);
       if (!v) return false;
@@ -334,9 +349,24 @@ void Engine::fire(Control &c, const std::string &key, float oldV, float newV, bo
   }
 }
 
+float Engine::limit(const Control &c, const std::string &key, float v) {
+  if (std::isnan(v)) v = 0;
+  if (c.type == Type::RADIO && key == "x") {
+    float hi = (float)std::max(1, c.propI("steps", 1)) - 1;
+    return std::clamp(std::round(v), 0.0f, hi);
+  }
+  if (c.type == Type::PAGER && key == "page") {
+    float hi = (float)std::max<size_t>(1, c.children.size()) - 1;
+    return std::clamp(std::round(v), 0.0f, hi);
+  }
+  if (key == "x" || key == "y" || key == "touch") return std::clamp(v, 0.0f, 1.0f);
+  return v;
+}
+
 void Engine::setNum(Control &c, const std::string &key, float v) {
   Value *val = c.value(key);
   if (!val || val->isString) return;
+  v = limit(c, key, v);
   float old = val->num;
   if (old == v) return;
   val->num = v;
@@ -364,7 +394,7 @@ bool Engine::handleIncoming(const osc::Message &in) {
         float a = in.args[i].asFloat();
         float range = p.scaleMax - p.scaleMin;
         float nv = range != 0 ? (a - p.scaleMin) / range : a;
-        if (v->key == "x" || v->key == "y") nv = nv < 0 ? 0 : nv > 1 ? 1 : nv;
+        nv = limit(c, v->key, nv);
         if (nv != v->num) {
           fired.push_back({v->key, {v->num, nv}});
           v->num = nv;

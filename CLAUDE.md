@@ -36,7 +36,15 @@ Stufe 1 (fertig): Group/Button/Fader/Label/Text/Box, OSC senden+empfangen.
 Stufe 2 (fertig): Weboberfläche (http://osc-panel.local): Layouts hochladen/wechseln/löschen (live,
 ohne Neustart), OSC-Ziel/Ports, WLAN, Live-Monitor; Einstellungen in NVS; Einrichtungs-WLAN
 "OSC-Panel"/"oscpanel" nach 20 s ohne Verbindung.
-Stufe 3: weitere Typen (Radio, XY, Encoder, Pager …).
+Stufe 3 (fertig, auf dem Panel geprüft): XY, Radar, Radial, Encoder, Radio, Grid, Pager
+(Testlayout `data/layouts/ESP32 Panel Test 02.tosc`). Offen: Lua-Skripte, MIDI, Multitouch.
+Festlegungen aus TouchOSC-Screenshot: Radial = Ring 300° mit Lücke unten, Encoder 0 = oben,
+Radar-Winkel ab 3 Uhr gegen den Uhrzeigersinn; INDEX-Partial wird skaliert wie Werte
+(scaleMin 1 → Zählung ab 1); Radio-`x` ist der Index, Pager-`page` die Seite (siehe `Engine::limit`).
+DMX über Art-Net (fertig, getestet): OSC an `/dmx/<kanal>` bzw. `/dmx/<universe>/<kanal>` wird in
+`osc_out` abgefangen und als ArtDmx gesendet (Float 0–1 → 0–255, Integer direkt; auch eingehendes
+OSC). `src/dmx.*` plattformunabhängig, `src/artnet.*` sendet; Einstellungen dmxon/dmxhost/dmxuni.
+Zurückgestellt: MIDI. Nicht gewünscht: Lua.
 
 ## Struktur (Projekt in `guition-4848s040/`)
 - `src/main.cpp`: Display-Init, LVGL-Anbindung (Partial-Buffer 480×40), `app::`-Funktionen (app.h)
@@ -47,7 +55,7 @@ Stufe 3: weitere Typen (Radio, XY, Encoder, Pager …).
 - `src/web.*`, `src/web_page.h`: Arduino-`WebServer` (läuft in `loop()`, gleicher Thread wie LVGL)
 - `src/settings.*`: NVS-Namespace `oscpanel`; Startwerte aus config.h/secrets.h
 - `src/tosc.*`, `src/xml_mini.*`, `src/osc.*`: plattformunabhängig (kein Arduino/LVGL) –
-  am Mac testbar mit `./tools/host_test/run.sh "data/layouts/Panel Test 01.tosc"` (ASan/UBSan)
+  am Mac testbar mit `./tools/host_test/run.sh "data/layouts/ESP32 Panel Test 02.tosc"` (ASan/UBSan)
 - `src/tosc_inflate_esp.cpp`: entpackt .tosc mit ROM-`tinfl_decompress` (ROM-miniz hat kein malloc:
   `*_mem_to_heap` funktioniert nicht, Dekompressor-Zustand ~11 KB auf den Heap, nicht Stack)
 - `src/ui_tosc.*`: zeichnet Elemente selbst per `LV_EVENT_DRAW_MAIN`, Touch über LVGL-Events
@@ -65,3 +73,8 @@ Stufe 3: weitere Typen (Radio, XY, Encoder, Pager …).
 - API zum Testen: `curl http://10.10.1.101/api/status`, Upload `curl -F file=@x.tosc
   "http://10.10.1.101/api/layouts?activate=1"`, Log `/api/log?since=0`.
 - Auf dem Mac läuft Resolume Arena (meldet sich per mDNS als `_osc._udp`) – Port 7000 ist dann belegt.
+- Art-Net im Netz: Resolume (10.10.1.120) sendet Universe 1 mit ~30 fps, Art-Net-Node 10.10.1.148
+  ("NetWork Node 2") gibt Universe 1 aus → das Panel nicht ungefragt auf Universe 1 senden lassen.
+  Arena belegt Port 6454: Unicast-Art-Net an den Mac kommt nur bei Arena an; zum Mitschneiden
+  Broadcast auf einem unbenutzten Universe (z. B. 32000) und Socket mit SO_REUSEPORT.
+- Multitouch: `src/touch_gt911.h` liest nur den ersten Punkt (GT911 kann bis zu 5).

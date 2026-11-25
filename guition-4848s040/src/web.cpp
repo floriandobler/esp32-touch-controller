@@ -6,6 +6,7 @@
 #include "config.h"
 #include "layouts.h"
 #include "net_osc.h"
+#include "artnet.h"
 #include "web_page.h"
 
 namespace web {
@@ -90,6 +91,11 @@ void handleStatus() {
   j += ",\"sent\":" + String(net_osc::sentCount());
   j += ",\"recv\":" + String(net_osc::receivedCount());
   j += ",\"dropped\":" + String(net_osc::droppedCount());
+  j += ",\"dmxOn\":" + String(s.dmxEnabled ? "true" : "false");
+  j += ",\"dmxHost\":" + jsonStr(s.dmxHost);
+  j += ",\"dmxUni\":" + String(s.dmxUniverse);
+  j += ",\"dmxTarget\":" + jsonStr(artnet::target());
+  j += ",\"dmxSent\":" + String(artnet::sentCount());
   j += ",\"layout\":" + jsonStr(app::activeLayout());
   j += ",\"controls\":" + String((unsigned)app::controlCount());
   j += ",\"layouts\":[";
@@ -136,6 +142,18 @@ void handleSettings() {
     if (!pass.isEmpty()) s.password = pass;
     else if (ssid != s.ssid) s.password = "";  // anderes Netz ohne Passwort = offenes WLAN
     s.ssid = ssid;
+  }
+  if (server.hasArg("dmx")) {  // DMX-Formular (Checkbox fehlt, wenn sie aus ist)
+    String on = server.arg("dmxon");
+    s.dmxEnabled = on == "1" || on == "on" || on == "true";
+    String h = server.arg("dmxhost");
+    h.trim();
+    IPAddress ip;
+    if (!h.isEmpty() && !ip.fromString(h)) return sendErr(400, "Art-Net-Ziel muss eine IP-Adresse sein (oder leer für Broadcast)");
+    s.dmxHost = h;
+    long u = server.arg("dmxuni").toInt();
+    if (u < 0 || u > 32767) return sendErr(400, "Universe muss zwischen 0 und 32767 liegen");
+    s.dmxUniverse = (uint16_t)u;
   }
   app::updateSettings(s);
   sendOk();

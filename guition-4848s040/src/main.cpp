@@ -8,6 +8,7 @@
 #include "tosc.h"
 #include "ui_tosc.h"
 #include "net_osc.h"
+#include "artnet.h"
 #include "settings.h"
 #include "layouts.h"
 #include "web.h"
@@ -110,6 +111,12 @@ static void show_message(const char *title, const String &detail) {
 }
 
 static void osc_out(const osc::Message &m) {
+  String dmxText;
+  if (artnet::handle(m, dmxText)) {  // /dmx/... geht als Art-Net raus, nicht als OSC
+    if (OSC_LOG) Serial.printf("%s\n", dmxText.c_str());
+    web::log('>', dmxText);
+    return;
+  }
   String s = osc::toString(m).c_str();
   if (OSC_LOG) Serial.printf("OSC -> %s\n", s.c_str());
   web::log('>', s);
@@ -125,6 +132,7 @@ void updateSettings(const Settings &s) {
   cfg = s;
   settings::save(cfg);
   web::log('!', "Einstellungen gespeichert");
+  artnet::apply(cfg);
   if (wifiChanged) pendingApplyAt = millis() + 500;  // Antwort an den Browser noch abschicken
   else net_osc::apply(cfg);
 }
@@ -208,6 +216,7 @@ void setup() {
   lv_indev_set_read_cb(indev, touch_cb);
 
   cfg = settings::load();
+  artnet::apply(cfg);
   load_initial_layout();
 
   net_osc::begin(cfg, [](const char *msg, bool sticky) {
@@ -223,10 +232,13 @@ void loop() {
   net_osc::loop([](const osc::Message &m) {
     bool hit = engine && engine->handleIncoming(m);
     String s = osc::toString(m).c_str();
-    if (!hit) s += "  (kein Element)";
+    String dmxText;
+    if (artnet::handle(m, dmxText)) s += "  → " + dmxText;  // Brücke: OSC von außen → Art-Net
+    else if (!hit) s += "  (kein Element)";
     if (OSC_LOG) Serial.printf("OSC <- %s\n", s.c_str());
     web::log('<', s);
   });
+  artnet::loop();
   web::loop();
   lv_timer_handler();
 

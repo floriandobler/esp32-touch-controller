@@ -13,7 +13,13 @@ namespace xml { struct Node; }
 
 namespace tosc {
 
-enum class Type { GROUP, BUTTON, FADER, LABEL, TEXT, BOX, OTHER };
+enum class Type {
+  GROUP, BUTTON, FADER, LABEL, TEXT, BOX,
+  XY, RADIAL, ENCODER, RADAR, RADIO, GRID, PAGER,
+  OTHER
+};
+
+const char *typeName(Type t);
 
 struct Color { float r = 0, g = 0, b = 0, a = 1; };
 struct Rect { float x = 0, y = 0, w = 0, h = 0; };
@@ -83,7 +89,11 @@ class Engine {
   std::function<void(Control &)> onRemoteChange;
 
   // Wert setzen, z. B. durch Touch. Löst passende OSC-Nachrichten aus.
+  // Der Wert wird vorher auf den gültigen Bereich gebracht (siehe limit).
   void setNum(Control &c, const std::string &key, float v);
+
+  // Gültiger Bereich je Element: x/y 0..1, Radio-Index 0..steps-1, Pager-Seite 0..n-1.
+  static float limit(const Control &c, const std::string &key, float v);
 
   // Eingehende Nachricht verarbeiten. Gibt true zurück, wenn ein Element reagiert hat.
   bool handleIncoming(const osc::Message &m);

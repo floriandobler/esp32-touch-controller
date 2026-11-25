@@ -98,6 +98,20 @@ footer{margin-top:18px;display:flex;justify-content:space-between;align-items:ce
     </form>
   </section>
 
+  <section>
+    <h2>DMX (Art-Net)</h2>
+    <form id="dmxForm">
+      <input type="hidden" name="dmx" value="1">
+      <label class="check"><input type="checkbox" id="dmxon" name="dmxon" value="1"> Art-Net-Ausgang an</label>
+      <div class="row">
+        <div><label for="dmxhost">Ziel-IP (leer = Broadcast)</label><input type="text" id="dmxhost" name="dmxhost" maxlength="15" autocomplete="off" placeholder="Broadcast"></div>
+        <div><label for="dmxuni">Universe</label><input type="number" id="dmxuni" name="dmxuni" min="0" max="32767" required></div>
+      </div>
+      <div class="actions"><button class="primary" type="submit">Speichern</button><span class="msg" id="dmxMsg"></span></div>
+      <p class="hint">OSC an <b>/dmx/&lt;Kanal&gt;</b> (1–512) geht als Art-Net raus: Float 0–1 → 0–255, Integer direkt 0–255. <b>/dmx/&lt;Universe&gt;/&lt;Kanal&gt;</b> für ein anderes Universe, mehrere Werte gehen an die folgenden Kanäle. Über WLAN ist die feste IP des Art-Net-Knotens zuverlässiger als Broadcast.</p>
+    </form>
+  </section>
+
   <section class="wide">
     <h2>Monitor</h2>
     <div class="log" id="log"></div>
@@ -168,6 +182,7 @@ function render() {
   if (!formsFilled) {
     $('host').value = st.host; $('tport').value = st.tport; $('lport').value = st.lport;
     $('ssid').value = st.ssid;
+    $('dmxon').checked = st.dmxOn; $('dmxhost').value = st.dmxHost; $('dmxuni').value = st.dmxUni;
     $('password').placeholder = st.hasPassword ? 'unverändert' : '';
     formsFilled = true;
   }
@@ -177,6 +192,7 @@ function render() {
     '<dt>Layout</dt><dd>' + (st.layout ? esc(st.layout) + ' · ' + st.controls + ' Elemente' : '–') + '</dd>' +
     '<dt>Sendet an</dt><dd>' + esc(st.host) + ':' + st.tport + (st.resolved ? '' : ' <span style="color:var(--bad)">(nicht gefunden)</span>') + '</dd>' +
     '<dt>Empfängt auf</dt><dd>Port ' + st.lport + '</dd>' +
+    '<dt>Art-Net</dt><dd>' + (st.dmxOn ? esc(st.dmxTarget) + ' · Universe ' + st.dmxUni + ' · ' + st.dmxSent + ' Pakete' : 'aus') + '</dd>' +
     '<dt>Speicher</dt><dd>' + kb(st.fsFree) + ' frei für Layouts · RAM ' + kb(st.heap) + ' · PSRAM ' + kb(st.psram) + '</dd>' +
     '<dt>Laufzeit</dt><dd>' + h + ' h ' + m + ' min</dd>';
   $('counts').textContent = st.sent + ' gesendet · ' + st.recv + ' empfangen' + (st.dropped ? ' · ' + st.dropped + ' verworfen' : '');
@@ -225,6 +241,14 @@ $('oscForm').onsubmit = async e => {
     await api('/api/settings', {method: 'POST', body: new URLSearchParams(new FormData(e.target))});
     msg($('oscMsg'), 'Gespeichert.', 'ok'); formsFilled = false; refresh();
   } catch (err) { msg($('oscMsg'), err.message, 'bad'); }
+};
+
+$('dmxForm').onsubmit = async e => {
+  e.preventDefault();
+  try {
+    await api('/api/settings', {method: 'POST', body: new URLSearchParams(new FormData(e.target))});
+    msg($('dmxMsg'), 'Gespeichert.', 'ok'); formsFilled = false; refresh();
+  } catch (err) { msg($('dmxMsg'), err.message, 'bad'); }
 };
 
 $('wifiForm').onsubmit = async e => {

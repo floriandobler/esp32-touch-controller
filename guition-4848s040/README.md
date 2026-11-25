@@ -23,6 +23,7 @@ pio run -t upload
   Gleicher Dateiname ersetzt das vorhandene Layout.
 - **OSC:** Ziel-Adresse, Ziel-Port und Empfangs-Port – gelten sofort.
 - **WLAN:** Netzwerk wechseln. Passwortfeld leer lassen = Passwort bleibt.
+- **DMX (Art-Net):** Art-Net-Ausgang an/aus, Ziel-IP (leer = Broadcast ins eigene Netz), Universe.
 - **Monitor:** Live-Anzeige aller gesendeten (→) und empfangenen (←) OSC-Nachrichten.
 
 Einstellungen und das angezeigte Layout bleiben nach einem Neustart erhalten.
@@ -39,23 +40,47 @@ schließt das Einrichtungs-WLAN eine Minute nach erfolgreicher Verbindung.
 Dateien in `data/layouts/` legen und `pio run -t uploadfs` ausführen.
 **Achtung:** Das ersetzt das ganze Dateisystem – im Browser hochgeladene Layouts sind danach weg.
 
+## DMX über Art-Net
+
+Der TouchOSC-Editor kann kein Art-Net – deshalb übernimmt das Panel OSC-Nachrichten mit
+bestimmten Pfaden und schickt sie als Art-Net (UDP-Port 6454) statt als OSC:
+
+| OSC-Nachricht | DMX |
+|---|---|
+| `/dmx/31` mit Float `0.0`–`1.0` | Kanal 31 = 0–255 (im eingestellten Universe) |
+| `/dmx/31` mit Integer `0`–`255` | Kanal 31 = Wert direkt |
+| `/dmx/2/31 …` | Universe 2, Kanal 31 |
+| `/dmx/31` mit mehreren Werten | Kanal 31, 32, 33 … (z. B. XY-Pad → zwei Kanäle) |
+
+Im TouchOSC-Editor also einfach als OSC-Adresse `/dmx/<kanal>` eintragen.
+
+- Ein Universe wird erst gesendet, wenn es eine `/dmx`-Nachricht dafür gab; danach jede Sekunde
+  wiederholt (Änderungen höchstens 40-mal pro Sekunde). Nach einem Neustart sendet das Panel nichts,
+  bis wieder ein Regler bewegt wird.
+- Auch `/dmx/…`-Nachrichten, die von außen per OSC ans Panel kommen, gehen als Art-Net raus.
+- **Achtung:** Sendet schon ein anderes Pult oder Resolume auf demselben Universe, kämpfen beide
+  um die Kanäle. Für das Panel ein eigenes Universe verwenden.
+- Über WLAN ist die feste IP des Art-Net-Knotens zuverlässiger als Broadcast.
+
 ## Ports
 
 | | Standard | Einstellung |
 |---|---|---|
 | Panel sendet an | Ziel:7000 | Resolume: *OSC Input Port* |
 | Panel empfängt auf | 7001 | Resolume: *OSC Output Port* |
+| Art-Net (DMX) | 6454 | fest |
 
 ## Was vom TouchOSC-Layout unterstützt wird
 
 - **Elemente:** Group, Button (Taster, Schalter beim Drücken/Loslassen), Fader (alle vier
-  Richtungen, absolut/relativ, Balken, Cursor, Raster, zentriert), Label, Text, Box.
-  Andere Typen erscheinen als grauer Rahmen mit ihrem Namen.
+  Richtungen, absolut/relativ, Balken, Cursor, Raster, zentriert), Label, Text, Box,
+  XY-Pad, Radar, Radial (Drehregler mit Anschlag), Encoder (endlos), Radio, Grid und Pager
+  (Seiten mit Tab-Leiste). Andere Typen erscheinen als grauer Rahmen mit ihrem Namen.
 - **OSC:** Pfade und Argumente aus Konstanten, Werten, Eigenschaften und Index; Umwandlung in
   Float/Integer/Boolean/String mit Skalierung; Trigger ANY/RISE/FALL; Senden/Empfangen,
   Feedback, „keine Duplikate“. Empfangene Werte bewegen die Elemente mit.
-- **Nicht unterstützt:** Lua-Skripte, MIDI, mehrere Verbindungen (es gibt genau ein Ziel),
-  Multitouch (ein Finger gleichzeitig).
+- **Nicht unterstützt:** Lua-Skripte, MIDI, mehrere OSC-Verbindungen (es gibt genau ein Ziel),
+  Multitouch (der Touch-Treiber liest nur einen Finger).
 
 ## Aufbau
 
@@ -72,6 +97,8 @@ Dateien in `data/layouts/` legen und `pio run -t uploadfs` ausführen.
 | `src/tosc.*` | TouchOSC-Modell: Eigenschaften, Werte, OSC-Nachrichten bauen/zuordnen |
 | `src/ui_tosc.*` | Zeichnen der Elemente und Touch-Bedienung |
 | `src/net_osc.*` | WLAN, Einrichtungs-WLAN, mDNS und OSC über UDP |
+| `src/dmx.*` | `/dmx/…`-Pfade auswerten, Art-Net-Pakete bauen (am Rechner testbar) |
+| `src/artnet.*` | Art-Net senden (Ziel, Universe, Takt) |
 | `src/osc.*` | OSC-Kodierung (Nachrichten, Bundles) |
 | `src/xml_mini.*` | Kleiner XML-Parser |
 | `src/tosc_inflate*` | Entpacken der `.tosc`-Datei (zlib, ROM-Funktion des ESP32) |
@@ -81,7 +108,7 @@ Dateien in `data/layouts/` legen und `pio run -t uploadfs` ausführen.
 Layout am Rechner prüfen, ohne zu flashen:
 
 ```bash
-./tools/host_test/run.sh "data/layouts/Panel Test 01.tosc"
+./tools/host_test/run.sh "data/layouts/ESP32 Panel Test 02.tosc"
 ```
 
 ## Wenn etwas nicht passt

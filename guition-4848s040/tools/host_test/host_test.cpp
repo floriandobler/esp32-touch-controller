@@ -9,6 +9,7 @@
 #include <zlib.h>
 #include "../../src/tosc.h"
 #include "../../src/tosc_inflate.h"
+#include "../../src/dmx.h"
 
 // zlib-Variante von inflateFile (auf dem Panel: ROM-tinfl)
 bool tosc::inflateFile(const uint8_t *data, size_t len, std::string &out, std::string *err) {
@@ -25,22 +26,10 @@ bool tosc::inflateFile(const uint8_t *data, size_t len, std::string &out, std::s
   return false;
 }
 
-static const char *typeStr(tosc::Type t) {
-  switch (t) {
-    case tosc::Type::GROUP: return "GROUP";
-    case tosc::Type::BUTTON: return "BUTTON";
-    case tosc::Type::FADER: return "FADER";
-    case tosc::Type::LABEL: return "LABEL";
-    case tosc::Type::TEXT: return "TEXT";
-    case tosc::Type::BOX: return "BOX";
-    default: return "OTHER";
-  }
-}
-
 static void dump(tosc::Engine &e, tosc::Control &c, int depth) {
   auto col = c.color();
   printf("%*s%s '%s' [%s] frame=(%g,%g %gx%g) color=(%g,%g,%g,%g)\n", depth * 2, "",
-         typeStr(c.type), c.name.c_str(), c.typeName.c_str(), c.frame.x, c.frame.y, c.frame.w,
+         tosc::typeName(c.type), c.name.c_str(), c.typeName.c_str(), c.frame.x, c.frame.y, c.frame.w,
          c.frame.h, col.r, col.g, col.b, col.a);
   for (auto &v : c.values)
     printf("%*s  value %s = %s\n", depth * 2, "", v.key.c_str(),
@@ -131,6 +120,99 @@ int main(int argc, char **argv) {
     assert(ok && count == 2 && fd->num("x") > 0.89f);
     printf("Bundle ok, fader1 x=%g\n", fd->num("x"));
   }
+  // Elemente aus "ESP32 Panel Test 02" (Stufe 3)
+  if (auto *g = find(*e.root(), "grid1")) {
+    printf("grid1: Fader 3 auf 0.5 (Pfad aus parent.name + Index ab 1)\n");
+    e.setNum(*g->children[2], "x", 0.5f);
+    assert(!sent.empty() && sent.back().rfind("/grid1/3 ", 0) == 0);
+    osc::Message in{"/grid1/4", {osc::Arg::Float(0.8f)}};
+    assert(e.handleIncoming(in) && g->children[3]->num("x") > 0.79f);
+  }
+  if (auto *r = find(*e.root(), "radio2")) {
+    printf("radio2: Index 3, dann 9 (wird auf 4 begrenzt)\n");
+    e.setNum(*r, "x", 3);
+    assert(sent.back() == "/radio2 ,i 3");
+    osc::Message in{"/radio2", {osc::Arg::Int(9)}};
+    e.handleIncoming(in);
+    assert(r->num("x") == 4);
+  }
+  if (auto *p = find(*e.root(), "pager1")) {
+    printf("pager1: Seite 2 empfangen, dann Seite 1 senden\n");
+    osc::Message in{"/pager1", {osc::Arg::Int(2)}};
+    assert(e.handleIncoming(in) && p->num("page") == 2);
+    e.setNum(*p, "page", 1);
+    assert(sent.back() == "/pager1 ,i 1");
+  }
+  if (auto *xy = find(*e.root(), "xy2")) {
+    printf("xy2: x=0.25, y=2 (wird auf 1 begrenzt)\n");
+    e.setNum(*xy, "x", 0.25f);
+    e.setNum(*xy, "y", 2.0f);
+    assert(xy->num("y") == 1.0f);
+  }
+  if (auto *b4 = find(*e.root(), "button4")) {
+    e.setNum(*b4, "x", 1);
+    assert(sent.back().rfind("/3/button4", 0) == 0);
+  }
+
+  // DMX über Art-Net (unabhängig vom Layout)
+  {
+    printf("\nDMX:\n");
+    std::vector<dmx::Change> ch;
+    std::string err;
+    auto P = [&](const osc::Message &m) { return dmx::parse(m, 0, ch, err); };
+    assert(!P({"/composition/master/", {osc::Arg::Float(1)}}));
+    assert(!P({"/dmxfoo/1", {osc::Arg::Float(1)}}));
+    assert(P({"/dmx/31", {osc::Arg::Float(0.5f)}}) && ch.size() == 1 && ch[0].channel == 31 &&
+           ch[0].universe == 0 && ch[0].value == 128);
+    printf("  %s\n", dmx::describe(ch).c_str());
+    assert(P({"/DMX/2/511", {osc::Arg::Float(1), osc::Arg::Int(300), osc::Arg::Int(7)}}) &&
+           ch.size() == 2 && ch[0].universe == 2 && ch[0].value == 255 && ch[1].value == 255);
+    printf("  %s (dritter Wert läge hinter Kanal 512)\n", dmx::describe(ch).c_str());
+    assert(P({"/dmx/1", {osc::Arg::Int(-5), osc::Arg::Bool(true), osc::Arg::Float(-1)}}) &&
+           ch[0].value == 0 && ch[1].value == 255 && ch[2].value == 0);
+    assert(P({"/dmx/0", {osc::Arg::Float(1)}}) && ch.empty() && !err.empty());
+    printf("  /dmx/0 -> %s\n", err.c_str());
+    assert(P({"/dmx/513", {osc::Arg::Float(1)}}) && ch.empty());
+    assert(P({"/dmx/31", {}}) && ch.empty());
+    assert(P({"/dmx/1/2/3", {osc::Arg::Float(1)}}) && ch.empty());
+    assert(P({"/dmx/x", {osc::Arg::Float(1)}}) && ch.empty());
+
+    // Paketaufbau und Sendezeitpunkte
+    dmx::Output out;
+    std::vector<std::vector<uint8_t>> pk;
+    auto send = [&](const uint8_t *d, size_t n) { pk.emplace_back(d, d + n); };
+    out.poll(0, send);
+    assert(pk.empty());  // ohne Nachricht wird nichts gesendet
+    P({"/dmx/31", {osc::Arg::Float(1)}});
+    out.apply(ch);
+    out.poll(1000, send);
+    assert(pk.size() == 1 && pk[0].size() == 18 + 512);
+    const uint8_t *a = pk[0].data();
+    assert(memcmp(a, "Art-Net\0", 8) == 0 && a[8] == 0x00 && a[9] == 0x50 && a[11] == 14);
+    assert(a[12] == 1 && a[14] == 0 && a[15] == 0 && a[16] == 2 && a[17] == 0);
+    assert(a[18 + 30] == 255 && a[18 + 29] == 0);
+    out.poll(1010, send);  // nichts geändert
+    assert(pk.size() == 1);
+    P({"/dmx/31", {osc::Arg::Float(0)}});
+    out.apply(ch);
+    out.poll(1010, send);  // geändert, aber zu früh (25 ms)
+    assert(pk.size() == 1);
+    out.poll(1025, send);
+    assert(pk.size() == 2 && pk[1][18 + 30] == 0 && pk[1][12] == 2);
+    out.poll(2025, send);  // Wiederholung nach 1 s
+    assert(pk.size() == 3);
+    P({"/dmx/300/1", {osc::Arg::Float(1)}});  // Universe 300 = Net 1, SubUni 44
+    out.apply(ch);
+    out.poll(2030, send);
+    assert(pk.size() == 4 && pk[3][14] == 44 && pk[3][15] == 1);
+    for (int u = 0; u < 20; u++) {
+      P({"/dmx/" + std::to_string(1000 + u) + "/1", {osc::Arg::Float(1)}});
+      out.apply(ch);
+    }
+    assert(out.universeCount() == dmx::MAX_UNIVERSES);
+    printf("  Art-Net-Pakete ok (%zu gesendet)\n", pk.size());
+  }
+
   printf("\nAlles in Ordnung.\n");
   return 0;
 }

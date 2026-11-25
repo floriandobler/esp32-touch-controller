@@ -41,6 +41,18 @@
 #define SETUP_AP_PASSWORD "oscpanel"
 #endif
 
+// DMX über Art-Net: OSC-Nachrichten an /dmx/<kanal> gehen als Art-Net raus (Port 6454).
+// Ziel leer = Broadcast ins eigene Netz, sonst die IP des Art-Net-Knotens.
+#ifndef ARTNET_ENABLED
+#define ARTNET_ENABLED 1
+#endif
+#ifndef ARTNET_HOST
+#define ARTNET_HOST ""
+#endif
+#ifndef ARTNET_UNIVERSE
+#define ARTNET_UNIVERSE 0
+#endif
+
 // Layouts liegen im Dateisystem unter /layouts (Upload über die Weboberfläche,
 // oder Ordner data/layouts/ mit: pio run -t uploadfs – das löscht alle hochgeladenen Layouts!)
 #define LAYOUT_DIR "/layouts"

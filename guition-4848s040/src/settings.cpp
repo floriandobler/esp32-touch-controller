@@ -16,6 +16,9 @@ Settings load() {
   s.targetPort = p.getUShort("tport", OSC_TARGET_PORT);
   s.listenPort = p.getUShort("lport", OSC_LISTEN_PORT);
   s.layout = p.getString("layout", "");
+  s.dmxEnabled = p.getBool("dmxon", ARTNET_ENABLED);
+  s.dmxHost = p.getString("dmxhost", ARTNET_HOST);
+  s.dmxUniverse = p.getUShort("dmxuni", ARTNET_UNIVERSE);
   p.end();
   return s;
 }
@@ -29,6 +32,9 @@ void save(const Settings &s) {
   p.putUShort("tport", s.targetPort);
   p.putUShort("lport", s.listenPort);
   p.putString("layout", s.layout);
+  p.putBool("dmxon", s.dmxEnabled);
+  p.putString("dmxhost", s.dmxHost);
+  p.putUShort("dmxuni", s.dmxUniverse);
   p.end();
 }
 
