@@ -1,0 +1,4 @@
+.DS_Store
+*.zip
+# Original liegt in ~/Documents/TouchOSC, Kopie in guition-4848s040/data/layouts/
+/*.tosc
