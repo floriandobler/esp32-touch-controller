@@ -29,5 +29,6 @@ int rssi();           // Signalstärke in dBm (0 = nicht verbunden)
 bool targetResolved();
 uint32_t sentCount();
 uint32_t receivedCount();
+uint32_t droppedCount();  // verworfen, weil die Warteschlange voll war
 
 }  // namespace net_osc

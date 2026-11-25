@@ -17,6 +17,10 @@
 - Bild springt bei WLAN-Last horizontal (PSRAM-Bandbreite) → Bounce-Buffer 480×10 px im
   `Arduino_ESP32RGBPanel`-Konstruktor behebt es (getestet mit 100 OSC/s + Webabrufen).
   `CONFIG_LCD_RGB_RESTART_IN_VSYNC` ist im Framework an, daher nur kurzes Springen statt Dauerversatz.
+- OSC-Empfang über AsyncUDP + eigene Warteschlange (512 Pakete im PSRAM), gleicher Pfad wird
+  zusammengefasst: lwIP-Socketpuffer fasst nur 6 Pakete (`CONFIG_LWIP_UDP_RECVMBOX_SIZE`, im
+  Arduino-Framework fest), WiFiUDP verlor bei Last ~40 %. Lasttest jetzt 100 %.
+- Resolume Arena auf dem Mac empfängt auf Port 8000 (Panel-Ziel 10.10.1.120:8000), getestet.
 - Tests vom Mac ins lokale Netz brauchen die macOS-Freigabe „Lokales Netzwerk“ für die Claude-App
   (sonst „No route to host“, obwohl das Gerät in `arp -an` auftaucht).
 

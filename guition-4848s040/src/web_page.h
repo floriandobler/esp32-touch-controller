@@ -179,7 +179,7 @@ function render() {
     '<dt>Empfängt auf</dt><dd>Port ' + st.lport + '</dd>' +
     '<dt>Speicher</dt><dd>' + kb(st.fsFree) + ' frei für Layouts · RAM ' + kb(st.heap) + ' · PSRAM ' + kb(st.psram) + '</dd>' +
     '<dt>Laufzeit</dt><dd>' + h + ' h ' + m + ' min</dd>';
-  $('counts').textContent = st.sent + ' gesendet · ' + st.recv + ' empfangen';
+  $('counts').textContent = st.sent + ' gesendet · ' + st.recv + ' empfangen' + (st.dropped ? ' · ' + st.dropped + ' verworfen' : '');
 }
 
 async function refresh() {

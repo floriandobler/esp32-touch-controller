@@ -89,6 +89,7 @@ void handleStatus() {
   j += ",\"resolved\":" + String(net_osc::targetResolved() ? "true" : "false");
   j += ",\"sent\":" + String(net_osc::sentCount());
   j += ",\"recv\":" + String(net_osc::receivedCount());
+  j += ",\"dropped\":" + String(net_osc::droppedCount());
   j += ",\"layout\":" + jsonStr(app::activeLayout());
   j += ",\"controls\":" + String((unsigned)app::controlCount());
   j += ",\"layouts\":[";

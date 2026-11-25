@@ -1,15 +1,30 @@
 #include "net_osc.h"
 #include <WiFi.h>
-#include <WiFiUdp.h>
+#include <AsyncUDP.h>
+#include <esp_heap_caps.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
 #include <ESPmDNS.h>
 #include "config.h"
+#include <vector>
 
 namespace net_osc {
 
 namespace {
 
 Settings cfg;
-WiFiUDP udp;
+AsyncUDP udp;
+// Empfangene Pakete: AsyncUDP ruft onPacket in seinem eigenen Task auf, unabhängig davon, ob die
+// Hauptschleife gerade zeichnet oder eine Webseite ausliefert. Die Pakete landen hier und werden
+// in loop() abgearbeitet. (Der lwIP-Socketpuffer selbst fasst nur 6 Pakete.)
+struct Packet {
+  uint16_t len;
+  uint8_t data[];
+};
+constexpr int QUEUE_LEN = 512;  // reicht für ~5 s Stillstand bei 100 Nachrichten/s
+constexpr size_t MAX_PACKET = 1536;
+QueueHandle_t rxQueue = nullptr;
+volatile uint32_t nDropped = 0;
 IPAddress target;
 bool targetOk = false;
 bool online = false;
@@ -19,7 +34,8 @@ bool mdnsStarted = false;
 uint32_t lastAttempt = 0;
 uint32_t startedAt = 0;
 uint32_t onlineSince = 0;
-uint32_t nSent = 0, nRecv = 0;
+uint32_t nSent = 0;
+volatile uint32_t nRecv = 0;
 StatusFn statusCb;
 
 void report(const char *msg, bool sticky = false) {
@@ -32,9 +48,28 @@ void resolveTarget() {
   if (!targetOk && online) targetOk = WiFi.hostByName(cfg.targetHost.c_str(), target) == 1;
 }
 
+void onPacket(AsyncUDPPacket &p) {
+  size_t len = p.length();
+  if (len == 0 || len > MAX_PACKET) return;
+  // Im PSRAM ablegen, damit volle Warteschlangen keinen internen RAM belegen
+  auto *pkt = (Packet *)heap_caps_malloc(sizeof(Packet) + len, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (!pkt) pkt = (Packet *)malloc(sizeof(Packet) + len);
+  if (!pkt) { nDropped++; return; }
+  pkt->len = (uint16_t)len;
+  memcpy(pkt->data, p.data(), len);
+  if (xQueueSend(rxQueue, &pkt, 0) != pdTRUE) {
+    free(pkt);
+    nDropped++;
+    return;
+  }
+  nRecv++;
+}
+
 void openUdp() {
-  if (udpOpen) udp.stop();
-  udpOpen = udp.begin(cfg.listenPort);
+  if (!rxQueue) rxQueue = xQueueCreate(QUEUE_LEN, sizeof(Packet *));
+  if (udpOpen) udp.close();
+  udpOpen = udp.listen(cfg.listenPort);
+  if (udpOpen) udp.onPacket(onPacket);
 }
 
 void startMdns() {
@@ -157,18 +192,23 @@ void loop(const std::function<void(const osc::Message &)> &onMessage) {
     reportOnline();
   }
 
-  if (!udpOpen) return;
-  static uint8_t buf[1536];
-  for (int i = 0; i < 16; i++) {  // pro Durchlauf begrenzen, damit die Oberfläche flüssig bleibt
-    int n = udp.parsePacket();
-    if (n <= 0) break;
-    int len = udp.read(buf, sizeof buf);
-    if (len <= 0) continue;
-    nRecv++;
-    if (!osc::decode(buf, len, onMessage)) {
-      Serial.printf("OSC: ungültiges Paket (%d Bytes) von %s\n", len,
-                    udp.remoteIP().toString().c_str());
-    }
+  if (!rxQueue) return;
+  // Alle wartenden Pakete dekodieren. Kommen mehrere Nachrichten an denselben Pfad, zählt nur
+  // die neueste – so staut sich bei schnellen Fader-Fahrten nichts auf.
+  static std::vector<osc::Message> batch;
+  batch.clear();
+  Packet *pkt;
+  int n = 0;
+  while (n++ < QUEUE_LEN && xQueueReceive(rxQueue, &pkt, 0) == pdTRUE) {
+    bool ok = osc::decode(pkt->data, pkt->len, [](const osc::Message &m) { batch.push_back(m); });
+    if (!ok) Serial.printf("OSC: ungültiges Paket (%u Bytes)\n", pkt->len);
+    free(pkt);
+  }
+  for (size_t i = 0; i < batch.size(); i++) {
+    bool newerFollows = false;
+    for (size_t j = i + 1; j < batch.size() && !newerFollows; j++)
+      newerFollows = batch[j].path == batch[i].path;
+    if (!newerFollows) onMessage(batch[i]);
   }
 }
 
@@ -177,9 +217,7 @@ void send(const osc::Message &m) {
   uint8_t buf[512];
   size_t n = osc::encode(m, buf, sizeof buf);
   if (!n) return;
-  udp.beginPacket(target, cfg.targetPort);
-  udp.write(buf, n);
-  if (udp.endPacket()) nSent++;
+  if (udp.writeTo(buf, n, target, cfg.targetPort) == n) nSent++;
 }
 
 bool connected() { return online; }
@@ -193,5 +231,6 @@ int rssi() { return online ? WiFi.RSSI() : 0; }
 bool targetResolved() { return targetOk; }
 uint32_t sentCount() { return nSent; }
 uint32_t receivedCount() { return nRecv; }
+uint32_t droppedCount() { return nDropped; }
 
 }  // namespace net_osc
